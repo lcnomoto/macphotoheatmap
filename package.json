@@ -1,0 +1,26 @@
+{
+  "name": "photos-heatmap-cli",
+  "version": "1.0.0",
+  "description": "CLI tool to create heatmaps from Photos.app location data",
+  "main": "dist/index.js",
+  "bin": {
+    "photos-heatmap": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "keywords": ["photos", "heatmap", "location", "cli", "macos"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "sqlite3": "^5.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.1"
+  }
+}
