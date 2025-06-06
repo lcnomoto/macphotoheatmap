@@ -1,8 +1,11 @@
-import { LocationData } from './photos-extractor';
-import * as fs from 'fs';
-import * as path from 'path';
+import { LocationData, HeatmapGeneratorInterface, FileSystemAdapter, LocationDataProcessor } from './interfaces';
 
-export class HeatmapGenerator {
+export class HeatmapGenerator implements HeatmapGeneratorInterface {
+  
+  constructor(
+    private fileSystemAdapter: FileSystemAdapter,
+    private locationProcessor: LocationDataProcessor
+  ) {}
   
   async generateHeatmap(locations: LocationData[], outputPath: string, format: string = 'html'): Promise<void> {
     if (format === 'html') {
@@ -13,10 +16,19 @@ export class HeatmapGenerator {
   }
 
   private async generateHTMLHeatmap(locations: LocationData[], outputPath: string): Promise<void> {
-    const center = this.calculateCenter(locations);
-    const heatmapData = locations.map(loc => `[${loc.latitude}, ${loc.longitude}, 1]`).join(',\n        ');
-    
-    const html = `
+    const center = this.locationProcessor.calculateCenter(locations);
+    const heatmapData = this.formatHeatmapData(locations);
+    const html = this.generateHTMLTemplate(locations, center, heatmapData);
+
+    this.fileSystemAdapter.writeFile(outputPath, html);
+  }
+
+  private formatHeatmapData(locations: LocationData[]): string {
+    return locations.map(loc => `[${loc.latitude}, ${loc.longitude}, 1]`).join(',\n        ');
+  }
+
+  private generateHTMLTemplate(locations: LocationData[], center: { lat: number; lng: number }, heatmapData: string): string {
+    return `
 <!DOCTYPE html>
 <html>
 <head>
@@ -46,7 +58,7 @@ export class HeatmapGenerator {
     <div class="info-panel">
         <h3>Photos Heatmap</h3>
         <p><strong>Total Photos:</strong> ${locations.length}</p>
-        <p><strong>Date Range:</strong> ${this.getDateRange(locations)}</p>
+        <p><strong>Date Range:</strong> ${this.locationProcessor.getDateRange(locations)}</p>
     </div>
 
     <script>
@@ -90,42 +102,5 @@ export class HeatmapGenerator {
     </script>
 </body>
 </html>`;
-
-    fs.writeFileSync(outputPath, html, 'utf8');
-  }
-
-  private calculateCenter(locations: LocationData[]): { lat: number; lng: number } {
-    if (locations.length === 0) {
-      return { lat: 35.6762, lng: 139.6503 }; // Tokyo default
-    }
-
-    const sum = locations.reduce(
-      (acc, loc) => ({
-        lat: acc.lat + loc.latitude,
-        lng: acc.lng + loc.longitude
-      }),
-      { lat: 0, lng: 0 }
-    );
-
-    return {
-      lat: sum.lat / locations.length,
-      lng: sum.lng / locations.length
-    };
-  }
-
-  private getDateRange(locations: LocationData[]): string {
-    const dates = locations
-      .map(loc => loc.timestamp)
-      .filter(date => date)
-      .sort();
-
-    if (dates.length === 0) {
-      return 'Unknown';
-    }
-
-    const earliest = dates[0]!.toLocaleDateString();
-    const latest = dates[dates.length - 1]!.toLocaleDateString();
-
-    return earliest === latest ? earliest : `${earliest} - ${latest}`;
   }
 }
