@@ -1,34 +1,34 @@
-import * as sqlite3 from 'sqlite3';
 import * as path from 'path';
-import * as fs from 'fs';
+import { LocationData, DatabaseAdapter, FileSystemAdapter, PhotosExtractorOptions } from './interfaces';
+import { SQLiteAdapter } from './adapters/sqlite-adapter';
+import { NodeFileSystemAdapter } from './adapters/filesystem-adapter';
 
-export interface LocationData {
-  latitude: number;
-  longitude: number;
-  timestamp?: Date;
-  filename?: string;
-}
+export { LocationData };
 
 export class PhotosExtractor {
   private dbPath: string;
+  private databaseAdapter: DatabaseAdapter;
+  private fileSystemAdapter: FileSystemAdapter;
 
-  constructor(dbPath: string) {
-    this.dbPath = dbPath;
+  constructor(dbPathOrOptions: string | PhotosExtractorOptions) {
+    if (typeof dbPathOrOptions === 'string') {
+      this.dbPath = dbPathOrOptions;
+      this.databaseAdapter = new SQLiteAdapter(this.dbPath);
+      this.fileSystemAdapter = new NodeFileSystemAdapter();
+    } else {
+      const options = dbPathOrOptions;
+      this.dbPath = options.dbPath || '';
+      this.databaseAdapter = options.databaseAdapter || new SQLiteAdapter(this.dbPath);
+      this.fileSystemAdapter = options.fileSystemAdapter || new NodeFileSystemAdapter();
+    }
   }
 
   async extractLocations(): Promise<LocationData[]> {
-    if (!fs.existsSync(this.dbPath)) {
+    if (this.dbPath && !this.fileSystemAdapter.exists(this.dbPath)) {
       throw new Error(`Photos database not found at: ${this.dbPath}`);
     }
 
-    return new Promise((resolve, reject) => {
-      const db = new sqlite3.Database(this.dbPath, sqlite3.OPEN_READONLY, (err) => {
-        if (err) {
-          reject(new Error(`Cannot open Photos database: ${err.message}\n\nThis usually means:\n1. Full Disk Access permission is not granted to your terminal\n2. Photos.app is currently running (try closing it)\n3. The database is locked by another process\n\nPlease:\n- Go to System Settings > Privacy & Security > Full Disk Access\n- Add your terminal application to the list\n- Close Photos.app if it's running\n- Try again`));
-          return;
-        }
-      });
-      
+    try {
       const query = `
         SELECT 
           ZASSET.ZLATITUDE as latitude,
@@ -47,30 +47,30 @@ export class PhotosExtractor {
         ORDER BY ZASSET.ZDATECREATED DESC
       `;
 
-      db.all(query, (err, rows: any[]) => {
-        if (err) {
-          db.close();
-          reject(new Error(`Database query failed: ${err.message}`));
-          return;
-        }
+      const rows = await this.databaseAdapter.query(query);
+      
+      const locations: LocationData[] = rows.map(row => ({
+        latitude: row.latitude,
+        longitude: row.longitude,
+        timestamp: row.timestamp ? new Date((row.timestamp + 978307200) * 1000) : undefined,
+        filename: row.filename
+      }));
 
-        const locations: LocationData[] = rows.map(row => ({
-          latitude: row.latitude,
-          longitude: row.longitude,
-          timestamp: row.timestamp ? new Date((row.timestamp + 978307200) * 1000) : undefined,
-          filename: row.filename
-        }));
-
-        db.close();
-        resolve(locations);
-      });
-    });
+      await this.databaseAdapter.close();
+      return locations;
+    } catch (error) {
+      await this.databaseAdapter.close();
+      if (error instanceof Error) {
+        throw new Error(`Cannot access Photos database: ${error.message}\n\nThis usually means:\n1. Full Disk Access permission is not granted to your terminal\n2. Photos.app is currently running (try closing it)\n3. The database is locked by another process\n\nPlease:\n- Go to System Settings > Privacy & Security > Full Disk Access\n- Add your terminal application to the list\n- Close Photos.app if it's running\n- Try again`);
+      }
+      throw error;
+    }
   }
 
   async getPhotosLibraryPath(): Promise<string> {
     const defaultPath = path.join(process.env.HOME || '', 'Pictures', 'Photos Library.photoslibrary');
     
-    if (fs.existsSync(defaultPath)) {
+    if (this.fileSystemAdapter.exists(defaultPath)) {
       return path.join(defaultPath, 'database', 'Photos.sqlite');
     }
     

@@ -1,8 +1,12 @@
-import { LocationData } from './photos-extractor';
-import * as fs from 'fs';
-import * as path from 'path';
+import { LocationData, FileSystemAdapter, HeatmapGeneratorOptions } from './interfaces';
+import { NodeFileSystemAdapter } from './adapters/filesystem-adapter';
 
 export class HeatmapGenerator {
+  private fileSystemAdapter: FileSystemAdapter;
+
+  constructor(options: HeatmapGeneratorOptions = {}) {
+    this.fileSystemAdapter = options.fileSystemAdapter || new NodeFileSystemAdapter();
+  }
   
   async generateHeatmap(locations: LocationData[], outputPath: string, format: string = 'html'): Promise<void> {
     if (format === 'html') {
@@ -91,7 +95,7 @@ export class HeatmapGenerator {
 </body>
 </html>`;
 
-    fs.writeFileSync(outputPath, html, 'utf8');
+    this.fileSystemAdapter.writeFile(outputPath, html);
   }
 
   private calculateCenter(locations: LocationData[]): { lat: number; lng: number } {
