@@ -3,6 +3,9 @@
 import { Command } from 'commander';
 import { PhotosExtractor } from './photos-extractor';
 import { HeatmapGenerator } from './heatmap-generator';
+import { SQLiteDatabaseAdapter } from './adapters/database-adapter';
+import { NodeFileSystemAdapter } from './adapters/filesystem-adapter';
+import { LocationDataProcessorImpl } from './utils/location-data-processor';
 import * as path from 'path';
 import * as os from 'os';
 
@@ -21,7 +24,9 @@ program
       const photosLibPath = path.join(os.homedir(), 'Pictures', 'Photos Library.photoslibrary');
       console.log(`Photos Library path: ${photosLibPath}`);
       
-      if (!require('fs').existsSync(photosLibPath)) {
+      const fileSystemAdapter = new NodeFileSystemAdapter();
+      
+      if (!fileSystemAdapter.exists(photosLibPath)) {
         console.error('Photos Library not found');
         return;
       }
@@ -79,7 +84,9 @@ program
       
       console.log(`Generated ${sampleLocations.length} sample locations`);
       
-      const generator = new HeatmapGenerator();
+      const fileSystemAdapter = new NodeFileSystemAdapter();
+      const locationProcessor = new LocationDataProcessorImpl();
+      const generator = new HeatmapGenerator(fileSystemAdapter, locationProcessor);
       await generator.generateHeatmap(sampleLocations, options.output);
       
       console.log(`Test heatmap saved to: ${options.output}`);
@@ -114,13 +121,8 @@ program
           path.join(photosLibPath, 'database', 'search', 'psi.sqlite')
         ];
         
-        photosDbPath = possiblePaths.find(p => {
-          try {
-            return require('fs').existsSync(p);
-          } catch {
-            return false;
-          }
-        });
+        const fileSystemAdapter = new NodeFileSystemAdapter();
+        photosDbPath = possiblePaths.find(p => fileSystemAdapter.exists(p));
         
         if (!photosDbPath) {
           console.error('Could not find Photos database. Tried:');
@@ -136,7 +138,11 @@ program
         console.log(`Using Photos database: ${photosDbPath}`);
       }
       
-      const extractor = new PhotosExtractor(photosDbPath);
+      const fileSystemAdapter = new NodeFileSystemAdapter();
+      const databaseAdapter = new SQLiteDatabaseAdapter(photosDbPath);
+      const locationProcessor = new LocationDataProcessorImpl();
+      
+      const extractor = new PhotosExtractor(photosDbPath, databaseAdapter, fileSystemAdapter);
       const locations = await extractor.extractLocations();
       
       console.log(`Found ${locations.length} photos with location data`);
@@ -147,7 +153,7 @@ program
       }
       
       console.log('Generating heatmap...');
-      const generator = new HeatmapGenerator();
+      const generator = new HeatmapGenerator(fileSystemAdapter, locationProcessor);
       await generator.generateHeatmap(locations, options.output, options.format);
       
       console.log(`Heatmap saved to: ${options.output}`);
