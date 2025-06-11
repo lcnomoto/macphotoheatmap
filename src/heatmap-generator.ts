@@ -116,8 +116,8 @@ export class HeatmapGenerator {
   private getDateRange(locations: LocationData[]): string {
     const dates = locations
       .map(loc => loc.timestamp)
-      .filter(date => date)
-      .sort();
+      .filter((date): date is Date => date !== undefined)
+      .sort((a, b) => a.getTime() - b.getTime());
 
     if (dates.length === 0) {
       return 'Unknown';
